@@ -27,9 +27,11 @@ DOCSPORT := 8000
 
 GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null)
 DOCKER_IMAGE := docker$(if $(GIT_BRANCH),:$(GIT_BRANCH))
+DOCKER_IMAGE_CROSS := docker-cross$(if $(GIT_BRANCH),:$(GIT_BRANCH))
 DOCKER_DOCS_IMAGE := docker-docs$(if $(GIT_BRANCH),:$(GIT_BRANCH))
 
 DOCKER_RUN_DOCKER := docker run --rm -it --privileged $(DOCKER_ENVS) $(DOCKER_MOUNT) "$(DOCKER_IMAGE)"
+DOCKER_RUN_DOCKER_CROSS := docker run --rm -it --privileged $(DOCKER_ENVS) $(DOCKER_MOUNT) "$(DOCKER_IMAGE_CROSS)"
 
 DOCKER_RUN_DOCS := docker run --rm -it $(DOCS_MOUNT) -e AWS_S3_BUCKET -e NOCACHE
 
@@ -44,8 +46,8 @@ all: build
 binary: build
 	$(DOCKER_RUN_DOCKER) hack/make.sh binary
 
-cross: build
-	$(DOCKER_RUN_DOCKER) hack/make.sh binary cross
+cross: build-cross
+	$(DOCKER_RUN_DOCKER_CROSS) hack/make.sh binary cross
 
 docs: docs-build
 	$(DOCKER_RUN_DOCS) -p $(if $(DOCSPORT),$(DOCSPORT):)8000 "$(DOCKER_DOCS_IMAGE)" mkdocs serve

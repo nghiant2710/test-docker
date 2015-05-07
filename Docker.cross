@@ -23,6 +23,10 @@ RUN apt-get install -y \
 	gcc-multilib \
 	--no-install-recommends
 
+# Get lvm2 source for compiling statically
+RUN git clone -b v2_02_103 https://git.fedorahosted.org/git/lvm2.git /usr/local/lvm2
+# see https://git.fedorahosted.org/cgit/lvm2.git/refs/tags for release tags
+
 # Compile and install lvm for linux/arm and linux/i386
 RUN cd /usr/local/lvm2 \
 	&& make clean && export ac_cv_func_malloc_0_nonnull=yes \

@@ -84,6 +84,13 @@ shell: build
 build: bundles
 	docker build -t "$(DOCKER_IMAGE)" .
 
+build-cross:
+	head -n -2 Dockerfile > .DockerfileCross.swp
+	cat Dockerfile.cross >> .DockerfileCross.swp
+	tail -n 2 Dockerfile >> .DockerfileCross.swp
+	docker build -t "$(DOCKER_IMAGE_CROSS)" -f .DockerfileCross.swp .
+	rm .DockerfileCross.swp
+
 docs-build:
 	cp ./VERSION docs/VERSION
 	echo "$(GIT_BRANCH)" > docs/GIT_BRANCH

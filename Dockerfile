@@ -24,43 +24,28 @@
 #
 
 FROM ubuntu:14.04
-# This file describes the standard way to cross building Docker, using docker
-#
-# Usage:
-#
-# # Assemble the full dev environment. This is slow the first time.
-# head -n -2 Dockerfile > .DockerfileCross.swp
-# cat Dockerfile.cross >> .DockerfileCross.swp
-# tail -n 2 Dockerfile >> .DockerfileCross.swp
-# docker build -t dockercross -f DockerfileCross.swp
-#
-# # Mount your source in an interactive container for quick testing:
-# docker run -v `pwd`:/go/src/github.com/docker/docker --privileged -i -t dockercross bash
-#
-
-MAINTAINER Praneeth Bodduluri <lifeeth@resin.io>
+MAINTAINER Tianon Gravi <admwiggin@gmail.com> (@tianon)
 
 # Packaged dependencies
-RUN apt-get update && apt-get install -y \	
-	libc6-dev-armel-armhf-cross \
-	gcc-arm-linux-gnueabi \
-	gcc-multilib \
-	git-core \
-	ca-certificates \
-	build-essential \
-	curl \
-	libacl1-dev \
-	libapparmor-dev \
-	libblkid-dev \
-	liblzo2-dev \
-	libsqlite3-dev \
-	zlib1g-dev \
-	btrfs-tools \
-	e2fslibs-dev \
-	libdevmapper-dev \
+RUN apt-get update && apt-get install -y \
 	apparmor \
 	aufs-tools \
+	automake \
+	btrfs-tools \
+	build-essential \
+	curl \
+	dpkg-sig \
+	git \
+	iptables \
+	libapparmor-dev \
+	libcap-dev \
+	libsqlite3-dev \
 	mercurial \
+	parallel \
+	python-mock \
+	python-pip \
+	python-websocket \
+	reprepro \
 	ruby1.9.1 \
 	ruby1.9.1-dev \
 	s3cmd=1.1.0* \
@@ -70,44 +55,50 @@ RUN apt-get update && apt-get install -y \
 RUN git clone -b v2_02_103 https://git.fedorahosted.org/git/lvm2.git /usr/local/lvm2
 # see https://git.fedorahosted.org/cgit/lvm2.git/refs/tags for release tags
 
-# Compile and install lvm for linux/arm and linux/i386
+# Compile and install lvm2
 RUN cd /usr/local/lvm2 \
-	&& export ac_cv_func_malloc_0_nonnull=yes \
-	&& ./configure --enable-static_link --host=arm-linux-gnueabi --prefix=/usr/arm-linux-gnueabi/ \
+	&& ./configure --enable-static_link \
 	&& make device-mapper \
 	&& make install_device-mapper
-RUN cd /usr/local/lvm2 \
-	&& make clean && export ac_cv_func_malloc_0_nonnull=yes \
-	&& ./configure --build=i686-pc-linux-gnu "CFLAGS=-m32" "CXXFLAGS=-m32" "LDFLAGS=-m32" --prefix=/usr/lib32/ --enable-static_link \
-	&& make device-mapper \
-	&& make install_device-mapper
+# see https://git.fedorahosted.org/cgit/lvm2.git/tree/INSTALL
 
-# Compile and install sqlite3 for linux/arm and linux/i386
-ENV SQLITE3_VERSION 3080803
-RUN mkdir -p /usr/src/sqlite3 \
-	&& curl -sSL http://www.sqlite.org/2015/sqlite-autoconf-${SQLITE3_VERSION}.tar.gz | tar -v -C /usr/src/sqlite3 -xz --strip-components=1
-RUN cd /usr/src/sqlite3 \
-	&& ./configure --host=arm-linux-gnueabi --prefix=/usr/arm-linux-gnueabi/ \
+# Install lxc
+ENV LXC_VERSION 1.0.7
+RUN mkdir -p /usr/src/lxc \
+	&& curl -sSL https://linuxcontainers.org/downloads/lxc/lxc-${LXC_VERSION}.tar.gz | tar -v -C /usr/src/lxc/ -xz --strip-components=1
+RUN cd /usr/src/lxc \
+	&& ./configure \
 	&& make \
-	&& make install
-RUN cd /usr/src/sqlite3 \
-	&& make clean && ./configure --build=i686-pc-linux-gnu "CFLAGS=-m32" "CXXFLAGS=-m32" "LDFLAGS=-m32" --prefix=/usr/lib32/ \
-	&& make \
-	&& make install
+	&& make install \
+	&& ldconfig
 
-# Compile and install libapparmor for linux/arm and linux/i386
-ENV LIBAPPARMOR_VERSION 2.9
-ENV LIBAPPARMOR_PATCH 1
-RUN mkdir -p /usr/src/apparmor \
-	&& curl -sSL https://launchpad.net/apparmor/${LIBAPPARMOR_VERSION}/${LIBAPPARMOR_VERSION}.${LIBAPPARMOR_PATCH}/+download/apparmor-${LIBAPPARMOR_VERSION}.${LIBAPPARMOR_PATCH}.tar.gz | tar -v -C /usr/src/apparmor -xz --strip-components=1
-RUN cd /usr/src/apparmor/libraries/libapparmor \
-	&& ./configure --host=arm-linux-gnueabi --prefix=/usr/arm-linux-gnueabi/ \
-	&& make \
-	&& make install
-RUN cd /usr/src/apparmor/libraries/libapparmor \
-	&& make clean && ./configure --build=i686-pc-linux-gnu "CFLAGS=-m32" "CXXFLAGS=-m32" "LDFLAGS=-m32" --prefix=/usr/lib32/ \
-	&& make \
-	&& make install
+# Compile and install lvm2 for arm
+RUN apt-get install -yq gcc-arm-linux-gnueabi && cd /usr/local/lvm2 && export ac_cv_func_malloc_0_nonnull=yes && ./configure --enable-static_link --host=arm-linux-gnueabi --prefix=/usr/arm-linux-gnueabi/ && make device-mapper && make install_device-mapper && make clean
+
+# Compile and install sqlite3 for arm
+RUN curl -Ss http://www.sqlite.org/2015/sqlite-autoconf-3080802.tar.gz | tar -C /usr/local -xz
+RUN cd /usr/local/sqlite-autoconf-3080802 && ./configure --host=arm-linux-gnueabi --prefix=/usr/arm-linux-gnueabi/ && make && make install && make clean
+
+# Compile and install libapparmor for armhf
+RUN apt-get install -yq flex bison && curl -LSs https://launchpad.net/apparmor/2.9/2.9.1/+download/apparmor-2.9.1.tar.gz | tar -C /usr/local -xz
+RUN cd /usr/local/apparmor-2.9.1/libraries/libapparmor && ./configure --host=arm-linux-gnueabi --prefix=/usr/arm-linux-gnueabi/ && make && make install && make clean
+
+# Compile and install lvm2 for i386
+RUN apt-get install -yq gcc-multilib && cd /usr/local/lvm2 && ./configure --build=i686-pc-linux-gnu "CFLAGS=-m32" "CXXFLAGS=-m32" "LDFLAGS=-m32" --prefix=/usr/lib32/ --enable-static_link && make device-mapper && make install_device-mapper
+
+# Compile and install sqlite3 for i386
+RUN cd /usr/local/sqlite-autoconf-3080802 && ./configure --build=i686-pc-linux-gnu "CFLAGS=-m32" "CXXFLAGS=-m32" "LDFLAGS=-m32" --prefix=/usr/lib32/ && make && make install
+
+# Compile and install libapparmor for i386
+RUN cd /usr/local/apparmor-2.9.1/libraries/libapparmor && ./configure --build=i686-pc-linux-gnu "CFLAGS=-m32" "CXXFLAGS=-m32" "LDFLAGS=-m32" --prefix=/usr/lib32/ && make && make install
+
+# Install Go
+ENV GO_VERSION 1.4.2
+RUN curl -sSL https://golang.org/dl/go${GO_VERSION}.src.tar.gz | tar -v -C /usr/local -xz \
+	&& mkdir -p /go/bin
+ENV PATH /go/bin:/usr/local/go/bin:$PATH
+ENV GOPATH /go:/go/src/github.com/docker/docker/vendor
+RUN cd /usr/local/go/src && ./make.bash --no-clean 2>&1
 
 # Compile Go for cross compilation
 ENV DOCKER_CROSSPLATFORMS \
@@ -116,16 +107,8 @@ ENV DOCKER_CROSSPLATFORMS \
 	freebsd/amd64 freebsd/386 freebsd/arm \
 	windows/amd64 windows/386
 
-# Install Go
-ENV GO_VERSION 1.4.2
-RUN curl -sSL https://golang.org/dl/go${GO_VERSION}.src.tar.gz | tar -v -C /usr/local -xz \
-	&& mkdir -p /go/bin
-ENV PATH /go/bin:/usr/local/go/bin:$PATH
-ENV GOPATH /go:/go/src/github.com/docker/docker/vendor
-
 # (set an explicit GOARM of 5 for maximum compatibility)
-ENV PATH /go/bin:$PATH
-ENV GOARM 6
+ENV GOARM 5
 RUN cd /usr/local/go/src \
 	&& set -x \
 	&& for platform in $DOCKER_CROSSPLATFORMS; do \
@@ -133,26 +116,44 @@ RUN cd /usr/local/go/src \
 		GOARCH=${platform##*/} \
 			./make.bash --no-clean 2>&1; \
 	done
-	
-# Get btrfs-tools
-RUN git clone --no-checkout git://git.kernel.org/pub/scm/linux/kernel/git/kdave/btrfs-progs.git && cd /btrfs-progs && git checkout -q v3.17.3
-# see https://git.kernel.org/cgit/linux/kernel/git/kdave/btrfs-progs.git/refs/tags for release tags
 
-# Compile and install btrfs-tools
-RUN	cd /btrfs-progs && make -j $(nproc) DISABLE_DOCUMENTATION=1 && make install DISABLE_DOCUMENTATION=1
-# see https://git.kernel.org/cgit/linux/kernel/git/kdave/btrfs-progs.git/tree/INSTALL
+# We still support compiling with older Go, so need to grab older "gofmt"
+ENV GOFMT_VERSION 1.3.3
+RUN curl -sSL https://storage.googleapis.com/golang/go${GOFMT_VERSION}.$(go env GOOS)-$(go env GOARCH).tar.gz | tar -C /go/bin -xz --strip-components=2 go/bin/gofmt
 
+# Update this sha when we upgrade to go 1.5.0
+ENV GO_TOOLS_COMMIT 069d2f3bcb68257b627205f0486d6cc69a231ff9
 # Grab Go's cover tool for dead-simple code coverage testing
-RUN	go get code.google.com/p/go.tools/cmd/cover
+# Grab Go's vet tool for examining go code to find suspicious constructs
+# and help prevent errors that the compiler might not catch
+RUN git clone https://github.com/golang/tools.git /go/src/golang.org/x/tools \
+	&& (cd /go/src/golang.org/x/tools && git checkout -q $GO_TOOLS_COMMIT) \
+	&& go install -v golang.org/x/tools/cmd/cover \
+	&& go install -v golang.org/x/tools/cmd/vet
 
 # TODO replace FPM with some very minimal debhelper stuff
-RUN	gem install --no-rdoc --no-ri fpm --version 1.3.2
+RUN gem install --no-rdoc --no-ri fpm --version 1.3.2
 
-# Install man page generator
-RUN mkdir -p /go/src/github.com/cpuguy83 \
-    && git clone -b v1 https://github.com/cpuguy83/go-md2man.git /go/src/github.com/cpuguy83/go-md2man \
-    && cd /go/src/github.com/cpuguy83/go-md2man \
-    && go get -v ./...
+# Install registry
+ENV REGISTRY_COMMIT d957768537c5af40e4f4cd96871f7b2bde9e2923
+RUN set -x \
+	&& git clone https://github.com/docker/distribution.git /go/src/github.com/docker/distribution \
+	&& (cd /go/src/github.com/docker/distribution && git checkout -q $REGISTRY_COMMIT) \
+	&& GOPATH=/go/src/github.com/docker/distribution/Godeps/_workspace:/go \
+		go build -o /go/bin/registry-v2 github.com/docker/distribution/cmd/registry
+
+# Get the "docker-py" source so we can run their integration tests
+ENV DOCKER_PY_COMMIT 91985b239764fe54714fa0a93d52aa362357d251
+RUN git clone https://github.com/docker/docker-py.git /docker-py \
+	&& cd /docker-py \
+	&& git checkout -q $DOCKER_PY_COMMIT
+
+# Setup s3cmd config
+RUN { \
+		echo '[default]'; \
+		echo 'access_key=$AWS_ACCESS_KEY'; \
+		echo 'secret_key=$AWS_SECRET_KEY'; \
+	} > ~/.s3cfg
 
 # Set user.email so crosbymichael's in-container merge commits go smoothly
 RUN git config --global user.email 'docker-dummy@example.com'
@@ -161,12 +162,34 @@ RUN git config --global user.email 'docker-dummy@example.com'
 RUN groupadd -r docker
 RUN useradd --create-home --gid docker unprivilegeduser
 
-VOLUME	/var/lib/docker
-WORKDIR	/go/src/github.com/docker/docker
-ENV	DOCKER_BUILDTAGS	apparmor selinux
+VOLUME /var/lib/docker
+WORKDIR /go/src/github.com/docker/docker
+ENV DOCKER_BUILDTAGS apparmor selinux btrfs_noversion
 
-# Set an explicit BUILD_CROSS variable so that the hack/make.sh cross uses this specific paths set in this Dockerfile for C libraries
-ENV BUILD_CROSS 1
+# Let us use a .bashrc file
+RUN ln -sfv $PWD/.bashrc ~/.bashrc
+
+# Get useful and necessary Hub images so we can "docker load" locally instead of pulling
+COPY contrib/download-frozen-image.sh /go/src/github.com/docker/docker/contrib/
+RUN ./contrib/download-frozen-image.sh /docker-frozen-images \
+	busybox:latest@4986bf8c15363d1c5d15512d5266f8777bfba4974ac56e3270e7760f6f0a8125 \
+	hello-world:frozen@e45a5af57b00862e5ef5782a9925979a02ba2b12dff832fd0991335f4a11e5c5
+# see also "hack/make/.ensure-frozen-images" (which needs to be updated any time this list is)
+
+# Install man page generator
+COPY vendor /go/src/github.com/docker/docker/vendor
+# (copy vendor/ because go-md2man needs golang.org/x/net)
+RUN set -x \
+	&& git clone -b v1.0.1 https://github.com/cpuguy83/go-md2man.git /go/src/github.com/cpuguy83/go-md2man \
+	&& git clone -b v1.2 https://github.com/russross/blackfriday.git /go/src/github.com/russross/blackfriday \
+	&& go install -v github.com/cpuguy83/go-md2man
+
+# install toml validator
+ENV TOMLV_COMMIT 9baf8a8a9f2ed20a8e54160840c492f937eeaf9a
+RUN set -x \
+	&& git clone https://github.com/BurntSushi/toml.git /go/src/github.com/BurntSushi/toml \
+	&& (cd /go/src/github.com/BurntSushi/toml && git checkout -q $TOMLV_COMMIT) \
+	&& go install -v github.com/BurntSushi/toml/cmd/tomlv
 
 # Wrap all commands in the "docker-in-docker" script to allow nested containers
 ENTRYPOINT ["hack/dind"]
